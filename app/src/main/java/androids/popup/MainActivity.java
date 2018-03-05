@@ -1,189 +1,205 @@
-package androids.popup;
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.util.Calendar;
+package androids.newapp;
 
-import android.app.Activity;
-import android.app.AlertDialog;
-import android.app.Dialog;
-import android.content.DialogInterface;
+import android.Manifest;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.graphics.Bitmap;
+import android.database.SQLException;
 import android.os.Bundle;
-import android.os.Environment;
-import android.provider.MediaStore;
+import android.support.design.widget.NavigationView;
+import android.support.v4.app.ActivityCompat;
+import android.support.v4.content.ContextCompat;
+import android.support.v4.view.GravityCompat;
+import android.support.v4.widget.DrawerLayout;
+import android.support.v7.app.ActionBarDrawerToggle;
+import android.support.v7.app.AppCompatActivity;
+import android.support.v7.widget.Toolbar;
+import android.view.MenuItem;
 import android.view.View;
-import android.view.View.OnClickListener;
 import android.widget.Button;
-import android.widget.DatePicker;
-import android.widget.EditText;
-import android.widget.ImageButton;
-import android.widget.ImageView;
+import android.widget.TextView;
+import android.widget.Toast;
+import java.sql.Connection;
 
-public class MainActivity extends Activity {
 
-    private int REQUEST_CAMERA = 0, SELECT_FILE = 1;
-    private ImageButton ivImage;
-    private String userChoosenTask;
-    private EditText date;
-    private EditText spec;
-    private int Sdate,Smonth,Syear;
+public class MainActivity extends AppCompatActivity
+        implements NavigationView.OnNavigationItemSelectedListener {
+     Button btn;
+    DBHelper dbHelper;Connection connect;
+    public static final int MY_PERMISSIONS_REQUEST_LOCATION = 99;
+    SessionManager sessionManager;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        date = (EditText)findViewById(R.id.editText2);
-        date.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                final Dialog dialog = new Dialog(MainActivity.this);
-                dialog.setContentView(R.layout.datepickerview);
-                dialog.setTitle("");
-                DatePicker datePicker = (DatePicker) dialog.findViewById(R.id.datePicker);
-                Calendar calendar = Calendar.getInstance();
-                calendar.setTimeInMillis(System.currentTimeMillis());
-                Sdate = calendar.get(Calendar.DAY_OF_MONTH);
-                Smonth = calendar.get(Calendar.MONTH);
-                Syear = calendar.get(Calendar.YEAR);
-                datePicker.init(calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH), calendar.get(Calendar.DAY_OF_MONTH), new DatePicker.OnDateChangedListener() {
+
+        sessionManager = new SessionManager(getApplication());
+        String phoneNo = sessionManager.getUserDetails().get(SessionManager.KEY_NAME);
+
+        Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
+        setSupportActionBar(toolbar);
+
+        DrawerLayout drawer = (DrawerLayout) findViewById(R.id.drawer_layout);
+        ActionBarDrawerToggle toggle = new ActionBarDrawerToggle(
+                this, drawer, toolbar, R.string.navigation_drawer_open, R.string.navigation_drawer_close);
+        drawer.setDrawerListener(toggle);
+        toggle.syncState();
+
+        NavigationView navigationView = (NavigationView) findViewById(R.id.nav_view);
+        navigationView.setNavigationItemSelectedListener(this);
+
+
+
+        try {
+            ConnectionHelper conStr = new ConnectionHelper();
+            connect = conStr.connectionclasss();        // Connect to database
+            if (connect == null) {
+                Toast.makeText(getApplicationContext(), "Check your internet Access", Toast.LENGTH_SHORT).show();
+            } else {
+
+
+                if(sessionManager.isLoggedIn()){
+                    View header = (((NavigationView) findViewById(R.id.nav_view)).getHeaderView(0));
+                    TextView name;
+                    name = (TextView) header.findViewById(R.id.personName);
+                    dbHelper = new DBHelper(MainActivity.this);
+                    dbHelper.open();
+                    String name1 = dbHelper.getUserName(phoneNo,connect);
+                    name.setText(name1);
+                }
+
+                if(CheckingPermissionIsEnabledOrNot())   {
+                    Toast.makeText(MainActivity.this, "All Permissions Granted Successfully", Toast.LENGTH_LONG).show();
+                }
+                else {
+                    RequestMultiplePermission();
+                }
+
+                btn = (Button) findViewById(R.id.getStarted);
+                btn.setOnClickListener(new View.OnClickListener() {
                     @Override
-                    public void onDateChanged(DatePicker view, int year, int monthOfYear, int dayOfMonth) {
-
-                            date.setText(dayOfMonth + "/" + (monthOfYear + 1) + "/" + year);
-                            dialog.dismiss();
-
-                        Sdate = dayOfMonth;
-                        Smonth = monthOfYear;
-                        Syear = year;
+                    public void onClick(View v) {
+                        Intent intent = new Intent(MainActivity.this,Hire.class);
+                        startActivity(intent);
                     }
                 });
-                dialog.show();
             }
-        });
+        }catch(SQLException s){
+            s.printStackTrace();
 
-        ivImage = (ImageButton) findViewById(R.id.select_img);
-        ivImage.setOnClickListener(new OnClickListener() {
 
-            @Override
-            public void onClick(View v) {
-                selectImage();
-            }
-        });
-        //ivImage = (ImageView) findViewById(R.id.ivImage);
+        }
+
     }
 
+
+    // Calling override method.
     @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+    public void onRequestPermissionsResult(int requestCode, String permissions[], int[] grantResults) {
         switch (requestCode) {
-            case Utility.MY_PERMISSIONS_REQUEST_READ_EXTERNAL_STORAGE:
-                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    if(userChoosenTask.equals("Take Photo"))
-                        cameraIntent();
-                    else if(userChoosenTask.equals("Choose from Library"))
-                        galleryIntent();
-                } else {
-                    //code for deny
+
+            case MY_PERMISSIONS_REQUEST_LOCATION:
+
+                if (grantResults.length > 0) {
+
+                    boolean CameraPermission = grantResults[0] == PackageManager.PERMISSION_GRANTED;
+                    boolean RecordAudioPermission = grantResults[1] == PackageManager.PERMISSION_GRANTED;
+                    boolean SendSMSPermission = grantResults[2] == PackageManager.PERMISSION_GRANTED;
+                    boolean GetAccountsPermission = grantResults[3] == PackageManager.PERMISSION_GRANTED;
+                    boolean externalStoragePermission = grantResults[4] == PackageManager.PERMISSION_GRANTED;
+                    boolean writeStoragePermission = grantResults[5] == PackageManager.PERMISSION_GRANTED;
+
+
+                    if (CameraPermission && RecordAudioPermission && SendSMSPermission && GetAccountsPermission) {
+                        //Toast.makeText(MainActivity.this, "Permission Granted", Toast.LENGTH_LONG).show();
+                    }
+                    else {
+                        Toast.makeText(MainActivity.this,"Permission Denied",Toast.LENGTH_LONG).show();
+
+                    }
                 }
+
                 break;
         }
     }
 
-    private void selectImage() {
-        final CharSequence[] items = { "Take Photo", "Choose from Library",
-                "Cancel" };
 
-        AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.this);
-        builder.setTitle("Add Photo!");
-        builder.setItems(items, new DialogInterface.OnClickListener() {
-            @Override
-            public void onClick(DialogInterface dialog, int item) {
-                boolean result=Utility.checkPermission(MainActivity.this);
+    // Checking permission is enabled or not using function starts from here.
+    public boolean CheckingPermissionIsEnabledOrNot() {
 
-                if (items[item].equals("Take Photo")) {
-                    userChoosenTask ="Take Photo";
-                    if(result)
-                        cameraIntent();
-
-                } else if (items[item].equals("Choose from Library")) {
-                    userChoosenTask ="Choose from Library";
-                    if(result)
-                        galleryIntent();
-
-                } else if (items[item].equals("Cancel")) {
-                    dialog.dismiss();
-                }
-            }
-        });
-        builder.show();
+        int FirstPermissionResult = ContextCompat.checkSelfPermission(getApplicationContext(), Manifest.permission.CALL_PHONE);
+        int SecondPermissionResult = ContextCompat.checkSelfPermission(getApplicationContext(),Manifest.permission.SEND_SMS);
+        int ThirdPermissionResult = ContextCompat.checkSelfPermission(getApplicationContext(), Manifest.permission.ACCESS_FINE_LOCATION);
+        int ForthPermissionResult = ContextCompat.checkSelfPermission(getApplicationContext(), Manifest.permission.ACCESS_COARSE_LOCATION);
+        int FifthPermissionResult = ContextCompat.checkSelfPermission(getApplicationContext(), Manifest.permission.READ_EXTERNAL_STORAGE);
+        int SixthPermissionResult = ContextCompat.checkSelfPermission(getApplicationContext(), Manifest.permission.WRITE_EXTERNAL_STORAGE);
+        return FirstPermissionResult == PackageManager.PERMISSION_GRANTED &&
+                SecondPermissionResult == PackageManager.PERMISSION_GRANTED &&
+                ThirdPermissionResult == PackageManager.PERMISSION_GRANTED &&
+                ForthPermissionResult == PackageManager.PERMISSION_GRANTED &&
+                FifthPermissionResult == PackageManager.PERMISSION_GRANTED &&
+                SixthPermissionResult == PackageManager.PERMISSION_GRANTED;
     }
 
-    private void galleryIntent()
-    {
-        Intent intent = new Intent();
-        intent.setType("image/*");
-        intent.setAction(Intent.ACTION_GET_CONTENT);//
-        startActivityForResult(Intent.createChooser(intent, "Select File"),SELECT_FILE);
-    }
 
-    private void cameraIntent()
-    {
-        Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
-        startActivityForResult(intent, REQUEST_CAMERA);
+    private void RequestMultiplePermission() {
+
+        ActivityCompat.requestPermissions(MainActivity.this, new String[]
+                {Manifest.permission.CALL_PHONE,
+                        Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                        Manifest.permission.READ_EXTERNAL_STORAGE,
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION,
+                        Manifest.permission.SEND_SMS,
+                }, MY_PERMISSIONS_REQUEST_LOCATION);
     }
 
     @Override
-    public void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-
-        if (resultCode == Activity.RESULT_OK) {
-            if (requestCode == SELECT_FILE)
-                onSelectFromGalleryResult(data);
-            else if (requestCode == REQUEST_CAMERA)
-                onCaptureImageResult(data);
+    public void onBackPressed() {
+        DrawerLayout drawer = (DrawerLayout) findViewById(R.id.drawer_layout);
+        if (drawer.isDrawerOpen(GravityCompat.START)) {
+            drawer.closeDrawer(GravityCompat.START);
+        } else {
+            //System.exit(0);
+            Intent startMain = new Intent(Intent.ACTION_MAIN);
+            startMain.addCategory(Intent.CATEGORY_HOME);
+            startMain.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(startMain);
         }
     }
 
-    private void onCaptureImageResult(Intent data) {
-        Bitmap thumbnail = (Bitmap) data.getExtras().get("data");
-        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-        thumbnail.compress(Bitmap.CompressFormat.JPEG, 90, bytes);
 
-        File destination = new File(Environment.getExternalStorageDirectory(),
-                System.currentTimeMillis() + ".jpg");
+    @SuppressWarnings("StatementWithEmptyBody")
+    @Override
+    public boolean onNavigationItemSelected(MenuItem item) {
+        int id = item.getItemId();
+        Intent intent;
 
-        FileOutputStream fo;
-        try {
-            destination.createNewFile();
-            fo = new FileOutputStream(destination);
-            fo.write(bytes.toByteArray());
-            fo.close();
-        } catch (FileNotFoundException e) {
-            e.printStackTrace();
-        } catch (IOException e) {
-            e.printStackTrace();
+        switch (id){
+            case R.id.nav_profile:
+                intent= new Intent(MainActivity.this,Profile.class);
+                startActivity(intent);
+                break;
+            case R.id.nav_hire:
+                intent = new Intent(MainActivity.this, Hire.class);
+                startActivity(intent);
+                break;
+            case R.id.nav_settings:
+                intent = new Intent(MainActivity.this, Settings.class);
+                startActivity(intent);
+                break;
+            case R.id.nav_logout:
+                intent = new Intent(MainActivity.this, Logout.class);
+                startActivity(intent);
+                break;
+            case R.id.nav_history:
+                intent = new Intent(MainActivity.this, MyProfile.class);
+                startActivity(intent);
+                break;
         }
-
-        ivImage.setImageBitmap(thumbnail);
-    }
-
-    @SuppressWarnings("deprecation")
-    private void onSelectFromGalleryResult(Intent data) {
-
-        Bitmap bm=null;
-        if (data != null) {
-            try {
-                bm = MediaStore.Images.Media.getBitmap(getApplicationContext().getContentResolver(), data.getData());
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-
-        ivImage.setImageBitmap(bm);
+        DrawerLayout drawer = (DrawerLayout) findViewById(R.id.drawer_layout);
+        drawer.closeDrawer(GravityCompat.START);
+        return true;
     }
 
 }
